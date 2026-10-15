@@ -1,0 +1,195 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Privacy Display 3D</title>
+<meta name="description" content="Samsung-style Privacy Display for DisplayXR: the eye tracker decides who may see private content, and stereo-only secrets show nothing to one eye, a bystander or a camera.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300..800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    color-scheme: dark;
+    --bg: #000; --panel: #0c0e13; --panel-2: #14171f; --line: #232837;
+    --text: #eef1f7; --muted: #8f97aa; --accent: #6fe0a4; --ok: #4ade80; --warn: #fbbf24; --bad: #ff7a7a;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: var(--bg); color: var(--text); font: 14px/1.5 Inter, system-ui, "Segoe UI", sans-serif; }
+  a { color: var(--accent); }
+  .wrap { max-width: 1560px; margin: 0 auto; padding: 16px 16px 56px; }
+  header { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; margin-bottom: 12px; }
+  header .home { font-size: 13px; color: var(--muted); text-decoration: none; }
+  header .home:hover { color: var(--text); }
+  h1 { font-size: 21px; margin: 0; font-weight: 650; }
+  h1 span { color: var(--accent); }
+  #status { font-size: 13px; color: var(--muted); margin-left: auto; }
+  #status[data-kind="ok"]::before { content: "● "; color: var(--ok); }
+  #status[data-kind="warn"]::before { content: "● "; color: var(--warn); }
+
+  .layout { display: grid; gap: 16px; grid-template-columns: minmax(0, 1fr); align-items: start; }
+  @media (min-width: 1180px) { .layout { grid-template-columns: minmax(0, 1fr) 390px; } }
+
+  nav.apps { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 10px; align-items: center; }
+  nav.apps button, .btn { font: inherit; font-weight: 600; padding: 8px 14px; border-radius: 10px; border: 1px solid var(--line); background: var(--panel-2); color: var(--text); cursor: pointer; }
+  nav.apps button[aria-pressed="true"] { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
+  nav.apps .spacer { flex: 1; }
+  .btn.small { padding: 5px 10px; font-size: 12.5px; font-weight: 550; }
+
+  /* The woven canvas stays visually bare: no border, radius, shadow, filter or background on it or any ancestor. */
+  .stage-wrap { position: relative; }
+  #stage { display: block; width: 100%; aspect-ratio: 16 / 9; will-change: transform; touch-action: none; }
+  #stage.hovering { cursor: pointer; }
+  #cover { position: absolute; inset: 0; background: var(--bg); display: grid; place-items: center; color: var(--muted); }
+  #banner { margin-top: 10px; padding: 10px 14px; border-radius: 12px; background: var(--panel); border: 1px solid var(--line); display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+  #banner .pill { font-weight: 650; padding: 3px 10px; border-radius: 999px; font-size: 12.5px; }
+  .pill.show { background: rgba(74,222,128,.15); color: var(--ok); }
+  .pill.hide { background: rgba(255,122,122,.15); color: var(--bad); }
+  .pill.off { background: rgba(143,151,170,.15); color: var(--muted); }
+  #banner .reason { color: var(--muted); }
+
+  aside { display: grid; gap: 12px; }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 14px; }
+  .card h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .07em; color: var(--muted); margin: 0 0 10px; font-weight: 650; }
+  .row { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 6px 0; }
+  .row + .row { border-top: 1px solid #1a1e29; }
+  .row label { flex: 1; cursor: pointer; }
+  .row small { display: block; color: var(--muted); font-size: 12px; line-height: 1.35; }
+  .sub { padding-left: 14px; }
+  input[type="checkbox"].switch { appearance: none; width: 38px; height: 22px; border-radius: 999px; background: #2a3040; position: relative; cursor: pointer; flex: none; transition: background .15s; }
+  input[type="checkbox"].switch::after { content: ""; position: absolute; top: 3px; left: 3px; width: 16px; height: 16px; border-radius: 50%; background: #cfd5e3; transition: transform .15s; }
+  input[type="checkbox"].switch:checked { background: var(--accent); }
+  input[type="checkbox"].switch:checked::after { transform: translateX(16px); background: #0b1210; }
+  input[type="checkbox"].switch:disabled { opacity: .45; }
+  input[type="range"] { width: 130px; accent-color: var(--accent); }
+  .master { font-size: 15px; font-weight: 650; }
+  #map { width: 100%; height: auto; display: block; border-radius: 10px; background: #07090d; touch-action: none; }
+  .stats { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 12px; margin-top: 8px; font-variant-numeric: tabular-nums; font-size: 13px; }
+  .stats div span { color: var(--muted); }
+  .btns { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
+  #bystander { width: 100%; aspect-ratio: 16 / 9; display: block; border-radius: 10px; background: #07090d; }
+  #log { list-style: none; margin: 0; padding: 0; font-size: 12.5px; color: var(--muted); max-height: 130px; overflow: auto; }
+  #log li { padding: 2px 0; }
+  #log li b { color: var(--text); font-weight: 550; }
+  details { margin-top: 16px; background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 12px 16px; }
+  details summary { cursor: pointer; font-weight: 650; }
+  details p, details li { color: #c3c9d6; }
+  #selftest { white-space: pre-wrap; font: 12.5px/1.4 ui-monospace, Consolas, monospace; }
+  @media (max-width: 600px) { nav.apps button { padding: 7px 10px; } input[type="range"] { width: 100px; } }
+</style>
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.161.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.161.0/examples/jsm/",
+    "@displayxr/inline3d": "./vendor/inline3d/inline3d.js",
+    "@displayxr/inline3d/three": "./vendor/inline3d/inline3d-three.js"
+  }
+}
+</script>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <a class="home" href="https://joehillthunder.github.io/">← DisplayXR HQ</a>
+    <h1>Privacy Display <span>3D</span></h1>
+    <div id="status">Starting…</div>
+  </header>
+
+  <div class="layout">
+    <main>
+      <nav class="apps" id="apps">
+        <button data-app="lock">Lock screen</button>
+        <button data-app="bank">Bank</button>
+        <button data-app="health">Health</button>
+        <button data-app="messages">Messages</button>
+        <span class="spacer"></span>
+        <button id="notify" class="btn small" type="button">Send a notification</button>
+      </nav>
+      <div class="stage-wrap">
+        <canvas id="stage"></canvas>
+        <div id="cover">Loading…</div>
+      </div>
+      <div id="banner">
+        <span id="pill" class="pill off">Privacy off</span>
+        <span id="reason" class="reason"></span>
+      </div>
+
+      <details>
+        <summary>How it works on DisplayXR</summary>
+        <p>Samsung's Privacy Display (Galaxy S26 Ultra) steers each pixel's light with Flex Magic Pixel hardware, so people beside you see a dark, unreadable screen. A DisplayXR panel has something different to work with: it tracks the viewer's eyes and steers a separate image to each eye. This demo builds privacy from that.</p>
+        <ul>
+          <li><b>Presence.</b> When the tracker has nobody (<code>trackingState</code> is <code>searching</code>), private content hides within 80 ms.</li>
+          <li><b>Privacy cone.</b> The tracked eyes give the viewer's angle and distance. Outside ±30° (±15° with maximum protection), private content hides. This is the software twin of a narrowed viewing angle.</li>
+          <li><b>Owner lock.</b> The first steady viewer is enrolled by their interpupillary distance (IPD), a 3D measurement that does not change when you turn your head. If the eyes jump in one frame (the tracker switched to another face), tracking drops and comes back, or the IPD stops matching, content hides until the owner is verified again.</li>
+          <li><b>Stereo-only secrets.</b> Private text becomes a random-dot stereogram. Each eye's image is uniform noise; the text exists only in the difference between the two images, so it appears, floating in depth, only for the tracked pair of eyes. A bystander catching one view (or a mix of both), a photo, or a screen recording of one eye sees noise. The dots re-seed every few frames, so a long exposure averages to grey.</li>
+        </ul>
+        <p><b>Limits.</b> The runtime tracks one face and does not report a second one, so a shoulder-surfer is not detected directly. Viewer locks protect when the owner is absent, off-axis or replaced. Stereo-only secrets protect while the owner is looking, but a lenticular panel repeats its views, so someone standing exactly in a repeat zone could still catch a usable pair. A camera with two lenses can also recover the text.</p>
+      </details>
+      <details id="selftest-box" hidden><summary>Self test</summary><div id="selftest"></div></details>
+    </main>
+
+    <aside>
+      <section class="card">
+        <div class="row">
+          <label for="master" class="master">Privacy display</label>
+          <input id="master" class="switch" type="checkbox" checked>
+        </div>
+        <h2 style="margin-top:10px">Conditions for turning on</h2>
+        <div class="row"><label for="c-apps">Apps<small>Turn on in the chosen apps</small></label><input id="c-apps" class="switch" type="checkbox" checked></div>
+        <div class="row sub"><label for="a-bank">Bank</label><input id="a-bank" class="switch" type="checkbox" checked></div>
+        <div class="row sub"><label for="a-health">Health</label><input id="a-health" class="switch" type="checkbox" checked></div>
+        <div class="row sub"><label for="a-messages">Messages</label><input id="a-messages" class="switch" type="checkbox"></div>
+        <div class="row"><label for="c-pin">PIN, pattern, password<small>Keypad digits are private and shuffled</small></label><input id="c-pin" class="switch" type="checkbox" checked></div>
+        <div class="row"><label for="c-notes">Notification pop-ups<small>Only the pop-up is private, the rest stays visible</small></label><input id="c-notes" class="switch" type="checkbox" checked></div>
+        <div class="row"><label for="c-max">Maximum privacy protection<small>Narrower cone (±15°, 90 cm), dimmer screen, stereo-only secrets</small></label><input id="c-max" class="switch" type="checkbox"></div>
+      </section>
+
+      <section class="card">
+        <h2>DisplayXR tracking</h2>
+        <div class="row"><label for="x-owner">Owner lock<small>Only the enrolled viewer's eyes unlock content</small></label><input id="x-owner" class="switch" type="checkbox" checked></div>
+        <div class="row"><label for="x-stereo">Stereo-only secrets<small>One eye, a bystander or a camera sees only noise</small></label><input id="x-stereo" class="switch" type="checkbox"></div>
+        <div class="row"><label for="x-anim">Moving dots<small>Re-seed the noise so long exposures average to grey</small></label><input id="x-anim" class="switch" type="checkbox" checked></div>
+        <div class="row"><label for="x-depth">Secret depth</label><input id="x-depth" type="range" min="1" max="5" step="1" value="2"></div>
+        <div class="row"><label for="x-cell">Dot size</label><input id="x-cell" type="range" min="0.0024" max="0.006" step="0.0003" value="0.0036"></div>
+      </section>
+
+      <section class="card">
+        <h2>Viewer (top view)</h2>
+        <canvas id="map" width="720" height="440"></canvas>
+        <div class="stats">
+          <div><span>State</span> <b id="s-state">–</b></div>
+          <div><span>Source</span> <b id="s-src">–</b></div>
+          <div><span>Angle</span> <b id="s-angle">–</b></div>
+          <div><span>Distance</span> <b id="s-dist">–</b></div>
+          <div><span>IPD</span> <b id="s-ipd">–</b></div>
+          <div><span>Owner IPD</span> <b id="s-owner">–</b></div>
+        </div>
+        <div class="btns">
+          <button class="btn small" id="b-enrol" type="button">Enrol me now</button>
+          <button class="btn small" id="b-forget" type="button">Forget owner</button>
+        </div>
+        <div class="row" style="margin-top:6px"><label for="sim">Simulate the viewer<small>Drag the head on the map. On by default without a 3D display.</small></label><input id="sim" class="switch" type="checkbox"></div>
+        <div class="btns" id="sim-btns">
+          <button class="btn small" data-sim="owner" type="button">Owner</button>
+          <button class="btn small" data-sim="other" type="button">Someone else</button>
+          <button class="btn small" data-sim="away" type="button">Walk away</button>
+        </div>
+      </section>
+
+      <section class="card">
+        <h2>What one eye or a camera sees</h2>
+        <canvas id="bystander" width="480" height="270"></canvas>
+        <small style="color:var(--muted);display:block;margin-top:6px">The left-eye image alone. With stereo-only secrets on, private fields are pure noise here even while you read them in 3D.</small>
+      </section>
+
+      <section class="card">
+        <h2>Events</h2>
+        <ul id="log"></ul>
+      </section>
+    </aside>
+  </div>
+</div>
+<script type="module" src="./js/main.js"></script>
+</body>
+</html>
